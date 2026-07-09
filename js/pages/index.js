@@ -77,10 +77,8 @@ function buildLevelList() {
     `
     if (!locked) {
       div.addEventListener('click', () => {
-        selectedLevel = i + 1
-        document.querySelectorAll('.level-item').forEach(el => el.classList.remove('selected'))
-        div.classList.add('selected')
         toggleLevelOverlay()
+        startGame(i + 1)
       })
     }
     levelList.appendChild(div)
@@ -88,7 +86,7 @@ function buildLevelList() {
 }
 
 function bindEvents() {
-  document.getElementById('btnStart').addEventListener('click', () => startGame(selectedLevel))
+  document.getElementById('btnStart').addEventListener('click', () => startGame(1))
   document.getElementById('btnLevels').addEventListener('click', toggleLevelOverlay)
   document.getElementById('btnHelp').addEventListener('click', toggleHelp)
   document.getElementById('levelMask').addEventListener('click', toggleLevelOverlay)

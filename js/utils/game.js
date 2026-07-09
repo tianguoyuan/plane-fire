@@ -542,17 +542,17 @@ class Game {
     const pulse = 0.8 + Math.sin(performance.now() * 0.003) * 0.2
     ctx.fillStyle = `rgba(255,200,0,${pulse})`
     ctx.beginPath(); ctx.arc(cx, b.y + b.height * 0.45, 8, 0, Math.PI * 2); ctx.fill()
-    const bw = b.width + 40, bh = 6, bx = b.x - 20
+    const barColors = ['#44ff44', '#88ff00', '#ffdd00', '#ff8800', '#ff4444']
+    const bw = b.width + 40, bh = 10, bx = b.x - 20, by = b.y - 20
+    const segW = bw / b.bars
     for (let i = 0; i < b.bars; i++) {
-      const by = b.y - 20 - i * (bh + 3)
-      const barStart = b.barHp * i
-      const barEnd = b.barHp * (i + 1)
-      const remainInBar = Math.max(0, Math.min(b.hp - barStart, b.barHp))
-      const fill = remainInBar / b.barHp
-      ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(bx, by, bw, bh)
+      const sx = bx + segW * i
+      const remain = Math.max(0, Math.min(b.hp - b.barHp * i, b.barHp))
+      const fill = remain / b.barHp
+      ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(sx, by, segW - 1, bh)
       if (fill > 0) {
-        ctx.fillStyle = '#ff4444'; ctx.fillRect(bx, by, bw * fill, bh)
-        ctx.fillStyle = '#ffcc00'; ctx.fillRect(bx, by, bw * fill, bh / 2)
+        ctx.fillStyle = barColors[i % barColors.length]
+        ctx.fillRect(sx, by, (segW - 1) * fill, bh)
       }
     }
     ctx.restore()
