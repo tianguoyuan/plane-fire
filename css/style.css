@@ -279,3 +279,45 @@ html, body {
 .pause-btn:active {
   background: rgba(255,255,255,0.2);
 }
+
+/* ===== Ultima Button ===== */
+.ultima-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 12px;
+  z-index: 50;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff8800, #ff4400);
+  border: 2px solid rgba(255,200,0,0.5);
+  color: #fff;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 0 20px rgba(255,100,0,0.4);
+}
+.ultima-btn:active {
+  transform: scale(0.9);
+}
+.ultima-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ff0000;
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-shadow: 0 0 6px rgba(255,0,0,0.6);
+}

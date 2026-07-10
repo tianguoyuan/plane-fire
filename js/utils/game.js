@@ -1,7 +1,7 @@
 import CONSTANTS from './constants.js'
 import LEVELS, { BOSS_RUSH } from './levels.js'
 import { Enemy, createEnemy } from './enemies.js'
-import { Boss } from './bosses.js'
+import { Boss, BOSS_PATTERNS } from './bosses.js'
 import { PROP_DEFINITIONS, Prop, createRandomProp } from './props.js'
 
 class Game {
@@ -58,6 +58,8 @@ class Game {
     this.floatingTexts = []
 
     this.score = savedState.score || 0
+    this.ultimaCount = savedState.ultimaCount != null ? savedState.ultimaCount : 3
+    this.ultimaBeam = null
     this.levelScore = 0
     this.totalKills = 0
     this.totalResolved = 0
@@ -66,6 +68,7 @@ class Game {
     this._startTime = performance.now() + 5000
     this._lastFire = 0
     this._bossRushPropTimer = 0
+    this._spinTimer = 0
 
     this.stars = []
     for (let i = 0; i < 60; i++) {
@@ -95,6 +98,7 @@ class Game {
     this.levelCompleteCallback = null
     this.scoreUpdateCallback = null
     this.stateChangeCallback = null
+    this.ultimaUpdateCallback = null
 
     this.running = true
     this._boundLoop = this.#loop.bind(this)
@@ -122,7 +126,13 @@ class Game {
     if (!this.running) return
 
     const now = performance.now()
-    const dt = Math.min(now - this.lastTime, 33)
+    const rawDt = now - this.lastTime
+    if (rawDt > 50) {
+      this.lastTime = now
+      requestAnimationFrame(this._boundLoop)
+      return
+    }
+    const dt = rawDt
     this.lastTime = now
     this.gameTime += dt
 
@@ -155,12 +165,14 @@ class Game {
 
     this.#updatePlayer(dt, now)
     this.#updateBullets()
+    this.#updateUltima()
     this.#updateEnemies(dt, now)
     this.#updateBoss(dt, now)
     if (this._bossRushIndex >= 0 && this.state === CONSTANTS.GAME_STATE.BOSS_FIGHT) {
       this._bossRushPropTimer += dt
-      if (this._bossRushPropTimer > 4000) {
-        this._bossRushPropTimer = 0
+      if (this._bossRushPropTimer > 3000) {
+    this._bossRushPropTimer = 0
+    this._bossRushGapTimer = 0
         const prop = createRandomProp(Math.random() * (this.screenWidth - 40) + 20, -20)
         if (prop) this.props.push(prop)
       }
@@ -222,6 +234,8 @@ class Game {
       case 3: this.playerBullets.push(mk(px, py, 0), mk(px - 10, py, -0.3), mk(px + 10, py, 0.3)); break
       case 4: this.playerBullets.push(mk(px - 12, py, -0.5), mk(px - 4, py, -0.15), mk(px + 4, py, 0.15), mk(px + 12, py, 0.5)); break
       case 5: this.playerBullets.push(mk(px, py, 0), mk(px - 10, py, -0.4), mk(px + 10, py, 0.4), mk(px - 18, py, -0.7), mk(px + 18, py, 0.7)); break
+      case 6: this.playerBullets.push(mk(px, py, 0), mk(px - 8, py, -0.3), mk(px + 8, py, 0.3), mk(px - 16, py, -0.6), mk(px + 16, py, 0.6), mk(px - 22, py, -0.9), mk(px + 22, py, 0.9)); break
+      case 7: this.playerBullets.push(mk(px, py, 0), mk(px - 7, py, -0.25), mk(px + 7, py, 0.25), mk(px - 14, py, -0.5), mk(px + 14, py, 0.5), mk(px - 20, py, -0.75), mk(px + 20, py, 0.75), mk(px - 26, py, -1), mk(px + 26, py, 1)); break
     }
   }
 
@@ -265,6 +279,13 @@ class Game {
     this.boss.update(dt, now)
     if (!this.boss.entering && this.state === CONSTANTS.GAME_STATE.BOSS_FIGHT) {
       this.boss.getNextPattern(now, this.enemyBullets, this.player)
+      if (this.boss.patterns.includes('spin') && now >= this._spinTimer) {
+        const timer = this.boss.patternTimers.spin
+        if (!timer || now >= timer) {
+          BOSS_PATTERNS.spin.execute(this.boss, now, this.enemyBullets, this.player, this.screenWidth)
+        }
+        this._spinTimer = now + 16
+      }
     }
   }
 
@@ -332,6 +353,7 @@ class Game {
         if (!this.running) return
         this.boss = new Boss(config, this.screenWidth, this.screenHeight)
         this.state = CONSTANTS.GAME_STATE.BOSS_FIGHT
+        if (this._bossRushIndex >= 0) this._bossRushPropTimer = 3900
         if (this.stateChangeCallback) this.stateChangeCallback(this.state, this.boss)
       }, 2000)
     } else {
@@ -393,6 +415,7 @@ class Game {
       if (this.#rectHit(prop, p)) {
         const result = prop.collect(p)
         if (result && result.type === 'bomb') this.#activateBomb()
+        else if (result && result.type === 'ultima') { this.ultimaCount++; this.#updateUltimaBtn() }
         else this.#addFloatingText(prop.x + prop.width / 2, prop.y, PROP_DEFINITIONS[prop.type]?.name || '道具', prop.color)
       }
     })
@@ -406,8 +429,6 @@ class Game {
     const p = this.player
     if (p.invincible) return
     if (p.hasShield) {
-      p.hasShield = false; p.shieldTimer = 0
-      p.invincible = true; p.invincibleTimer = performance.now()
       this.#spawnHitParticles(p.x + p.width / 2, p.y + p.height / 2, '#00ccff')
       return
     }
@@ -445,8 +466,8 @@ class Game {
       if (this._bossRushIndex < this.levelConfig.bosses.length) {
         setTimeout(() => {
           if (!this.running) return
-          this.startBossFight()
-        }, 3000)
+          this.#startNextBoss()
+        }, 5000)
         return
       }
     }
@@ -455,6 +476,18 @@ class Game {
       this.state = CONSTANTS.GAME_STATE.LEVEL_COMPLETE
       if (this.levelCompleteCallback) this.levelCompleteCallback(this.score, this.level)
     }, 2000)
+  }
+
+  #startNextBoss() {
+    if (this._bossRushIndex < 0) return
+    if (this._bossRushIndex >= this.levelConfig.bosses.length) return
+    if (this.boss) return
+    const config = this.levelConfig.bosses[this._bossRushIndex]
+    if (!config) return
+    this.boss = new Boss(config, this.screenWidth, this.screenHeight)
+    this.state = CONSTANTS.GAME_STATE.BOSS_FIGHT
+    this._bossRushPropTimer = 3900
+    if (this.stateChangeCallback) this.stateChangeCallback(this.state, this.boss)
   }
 
   #checkWinCondition(now) {
@@ -477,6 +510,7 @@ class Game {
 
   #activateBomb() {
     this.bombEffectTimer = 500
+    this.enemyBullets = []
     this.#spawnExplosion(this.screenWidth / 2, this.screenHeight / 2, '#ffffff', 60)
     this.#addFloatingText(this.screenWidth / 2, this.screenHeight / 2 - 50, '💣 全屏炸弹!', '#ff4444')
   }
@@ -492,6 +526,44 @@ class Game {
     }
     this.enemyBullets = []
     if (this.boss && this.boss.alive) this.boss.takeDamage(10)
+  }
+
+  activateUltima() {
+    if (this.ultimaCount <= 0 || this.ultimaBeam) return
+    this.ultimaCount--
+    this.#updateUltimaBtn()
+    this.ultimaBeam = {
+      x: 0, y: this.player.y,
+      width: this.screenWidth, height: 20,
+      alive: true, speed: 4
+    }
+    this.#spawnExplosion(this.screenWidth / 2, this.screenHeight / 2, '#ffff00', 30)
+    this.#addFloatingText(this.screenWidth / 2, this.screenHeight / 2 - 50, '🔥 大招!', '#ff8800')
+  }
+
+  #updateUltima() {
+    if (!this.ultimaBeam) return
+    this.ultimaBeam.y -= this.ultimaBeam.speed
+    if (this.ultimaBeam.y + this.ultimaBeam.height < 0) {
+      this.ultimaBeam = null
+      return
+    }
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i]
+      if (e.y + e.height > this.ultimaBeam.y && e.y < this.ultimaBeam.y + this.ultimaBeam.height) {
+        this.score += e.score * this.player.scoreMultiplier
+        this.totalKills++; this.totalResolved++
+        this.#spawnExplosion(e.x + e.width / 2, e.y + e.height / 2, e.color, 8)
+        this.enemies.splice(i, 1)
+      }
+    }
+    for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
+      const b = this.enemyBullets[i]
+      if (b.y + (b.radius || 4) > this.ultimaBeam.y && b.y - (b.radius || 4) < this.ultimaBeam.y + this.ultimaBeam.height) {
+        this.#spawnHitParticles(b.x, b.y, '#ff4444')
+        this.enemyBullets.splice(i, 1)
+      }
+    }
   }
 
   #spawnExplosion(x, y, color, count = 15) {
@@ -534,6 +606,7 @@ class Game {
     this.#renderProps(ctx)
     this.#renderEnemies(ctx)
     this.#renderBoss(ctx)
+    this.#renderUltima(ctx)
     this.#renderBullets(ctx)
     this.#renderPlayer(ctx)
     this.#renderParticles(ctx)
@@ -592,9 +665,16 @@ class Game {
     })
     this.enemyBullets.forEach(b => {
       ctx.fillStyle = b.color || '#ff6666'
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.radius || 4, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = 'rgba(255,100,100,0.2)'
-      ctx.beginPath(); ctx.arc(b.x, b.y, (b.radius || 4) * 2, 0, Math.PI * 2); ctx.fill()
+      if (b.isLaser) {
+        const halfW = (b.radius || 4) * 2.5
+        ctx.fillRect(b.x - halfW, b.y - 8, halfW * 2, 16)
+        ctx.fillStyle = 'rgba(0,255,255,0.15)'
+        ctx.fillRect(b.x - halfW * 2, b.y - 12, halfW * 4, 24)
+      } else {
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius || 4, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = 'rgba(255,100,100,0.2)'
+        ctx.beginPath(); ctx.arc(b.x, b.y, (b.radius || 4) * 2, 0, Math.PI * 2); ctx.fill()
+      }
     })
   }
 
@@ -664,6 +744,24 @@ class Game {
     ctx.restore()
   }
 
+  #renderUltima(ctx) {
+    if (!this.ultimaBeam) return
+    ctx.save()
+    const b = this.ultimaBeam
+    const g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.height)
+    g.addColorStop(0, 'rgba(255,200,0,0)')
+    g.addColorStop(0.3, 'rgba(255,200,0,0.8)')
+    g.addColorStop(0.5, 'rgba(255,255,255,0.9)')
+    g.addColorStop(0.7, 'rgba(255,200,0,0.8)')
+    g.addColorStop(1, 'rgba(255,200,0,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(b.x, b.y, b.width, b.height)
+    const pulse = 0.5 + Math.sin(performance.now() * 0.02) * 0.3
+    ctx.fillStyle = `rgba(255,255,200,${pulse * 0.3})`
+    ctx.fillRect(b.x - 10, b.y - 5, b.width + 20, b.height + 10)
+    ctx.restore()
+  }
+
   #renderProps(ctx) {
     this.props.forEach(p => {
       ctx.save()
@@ -712,7 +810,7 @@ class Game {
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, 44)
     ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
     const levelLabel = this._bossRushIndex >= 0
-      ? (this.boss ? `BOSS 连战 ${this._bossRushIndex + 1}/${this.levelConfig.bosses.length}` : 'BOSS 连战')
+      ? `BOSS 连战 ${this._bossRushIndex + 1}/${this.levelConfig.bosses.length}`
       : `第${this.level}关`
     ctx.fillText(levelLabel, 12, 22)
     let textX = 12 + ctx.measureText(levelLabel).width + 16
@@ -775,6 +873,8 @@ class Game {
   onLevelComplete(cb) { this.levelCompleteCallback = cb }
   onScoreUpdate(cb) { this.scoreUpdateCallback = cb }
   onStateChange(cb) { this.stateChangeCallback = cb }
+  onUltimaUpdate(cb) { this.ultimaUpdateCallback = cb }
+  #updateUltimaBtn() { if (this.ultimaUpdateCallback) this.ultimaUpdateCallback(this.ultimaCount) }
 
   pause() {
     if (this.state === CONSTANTS.GAME_STATE.PLAYING || this.state === CONSTANTS.GAME_STATE.BOSS_FIGHT) {

@@ -21,6 +21,7 @@ export function init(level, options = {}) {
   page.innerHTML = `
     <canvas id="gameCanvas"></canvas>
     <button class="pause-btn" id="pauseBtn">⏸</button>
+    <button class="ultima-btn" id="ultimaBtn">🔥<span class="ultima-count" id="ultimaCount">3</span></button>
     <div class="overlay" id="gameOverlay">
       <div class="overlay-bg"></div>
       <div class="overlay-panel game-overlay-panel">
@@ -75,6 +76,9 @@ export function init(level, options = {}) {
     document.getElementById('pauseOverlay').classList.remove('active')
     goHome()
   })
+  document.getElementById('ultimaBtn').addEventListener('click', () => {
+    if (game) game.activateUltima()
+  })
 
   startGame(canvas, w, h)
 
@@ -117,6 +121,10 @@ function startGame(canvas, w, h, state) {
       try { navigator.vibrate?.(100) } catch (e) { /* ignore */ }
     }
   })
+  game.onUltimaUpdate((count) => {
+    const el = document.getElementById('ultimaCount')
+    if (el) el.textContent = count
+  })
   game.onGameOver((score) => {
     const isNew = score > app.data.highScore
     if (isNew) { app.data.highScore = score; app.save() }
@@ -136,7 +144,8 @@ function startGame(canvas, w, h, state) {
       y: game.player.y,
       weaponLevel: game.player.weaponLevel,
       lives: game.player.lives,
-      score: game.score
+      score: game.score,
+      ultimaCount: game.ultimaCount
     }
     const btnText = currentLevel === BOSS_RUSH_LEVEL || next > LEVELS.length ? '返回首页' : '下一关'
     const title = currentLevel === BOSS_RUSH_LEVEL ? '🏆 BOSS 连战通关!' : '🎉 关卡通过!'
@@ -162,7 +171,8 @@ function showOverlay(title, score, btnText, levelComplete) {
           y: game.player.y,
           weaponLevel: game.player.weaponLevel,
           lives: game.player.lives,
-          score: game.score
+          score: game.score,
+          ultimaCount: game.ultimaCount
         }
       }
     } else {

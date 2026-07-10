@@ -15,7 +15,7 @@ const CONSTANTS = {
     MAX_LIVES: 5,
     INVINCIBLE_TIME: 2000,
     FIRE_RATE: 200,
-    MAX_WEAPON_LEVEL: 5
+    MAX_WEAPON_LEVEL: 7
   },
   BULLET: {
     PLAYER_SPEED: 10,
@@ -29,7 +29,8 @@ const CONSTANTS = {
     BOMB: 'bomb',
     HEALTH: 'health',
     SPEED: 'speed',
-    SCORE_X2: 'score_x2'
+    SCORE_X2: 'score_x2',
+    ULTIMA: 'ultima'
   },
   DROP_RATES: {
     WEAPON_UP: 0.08,
@@ -37,7 +38,8 @@ const CONSTANTS = {
     BOMB: 0.04,
     HEALTH: 0.06,
     SPEED: 0.04,
-    SCORE_X2: 0.03
+    SCORE_X2: 0.03,
+    ULTIMA: 0.02
   },
   SCREEN: {
     WIDTH: 375,

@@ -1,8 +1,8 @@
 const BOSSES = {
-  5:  { id: 'iron_beast',         name: '钢铁巨兽',     hp: 200, patterns: ['spread', 'aimed', 'spin'],        phaseThresholds: [0.4], bars: 2 },
-  10: { id: 'thunder_dragon',     name: '雷霆飞龙',     hp: 400, patterns: ['spread', 'aimed', 'circle', 'spin'], phaseThresholds: [0.5, 0.25], bars: 3 },
-  15: { id: 'shadow_demon',       name: '暗影魔王',     hp: 700, patterns: ['spread', 'aimed', 'circle', 'laser', 'spin'], phaseThresholds: [0.6, 0.3, 0.15], bars: 4 },
-  20: { id: 'ultimate_destruction', name: '终极毁灭',   hp: 1200, patterns: ['spread', 'aimed', 'circle', 'laser', 'meteor', 'spin'], phaseThresholds: [0.7, 0.5, 0.3, 0.15], bars: 5 }
+  5:  { id: 'iron_beast',         name: '钢铁巨兽',     hp: 200, patterns: ['spread', 'aimed', 'spin', 'beam'],        phaseThresholds: [0.4], bars: 2 },
+  10: { id: 'thunder_dragon',     name: '雷霆飞龙',     hp: 400, patterns: ['spread', 'aimed', 'circle', 'spin', 'beam'], phaseThresholds: [0.5, 0.25], bars: 3 },
+  15: { id: 'shadow_demon',       name: '暗影魔王',     hp: 700, patterns: ['spread', 'aimed', 'circle', 'laser', 'spin', 'beam'], phaseThresholds: [0.6, 0.3, 0.15], bars: 4 },
+  20: { id: 'ultimate_destruction', name: '终极毁灭',   hp: 1200, patterns: ['spread', 'aimed', 'circle', 'laser', 'meteor', 'spin', 'beam'], phaseThresholds: [0.7, 0.5, 0.3, 0.15], bars: 5 }
 }
 
 function bossForLevel(mergedLevel) {

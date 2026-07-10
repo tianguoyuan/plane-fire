@@ -80,26 +80,40 @@ const BOSS_PATTERNS = {
       boss.patternTimers.meteor = now + (2000 - boss.phase * 200)
     }
   },
+  beam: {
+    name: '直线激光',
+    execute(boss, now, bullets) {
+      const count = 1
+      const speed = boss.id === 'iron_beast' ? 5 : boss.id === 'thunder_dragon' ? 6 : boss.id === 'shadow_demon' ? 7 : 8
+      const radius = boss.id === 'iron_beast' ? 6 : boss.id === 'thunder_dragon' ? 7 : boss.id === 'shadow_demon' ? 8 : 10
+      for (let i = 0; i < count; i++) {
+        bullets.push({
+          x: boss.x + boss.width / 2, y: boss.y + boss.height,
+          vx: 0, vy: speed + boss.phase, radius,
+          color: '#00ffff', damage: 2, alive: true, isLaser: true
+        })
+      }
+      const cooldown = boss.id === 'iron_beast' ? 2000 : boss.id === 'thunder_dragon' ? 1800 : boss.id === 'shadow_demon' ? 1500 : 1200
+      boss.patternTimers.beam = now + cooldown
+    }
+  },
   spin: {
     name: '旋弹',
     execute(boss, now, bullets) {
       if (!boss.spinAngle) boss.spinAngle = 0
-      boss.spinAngle += boss.id === 'shadow_demon' || boss.id === 'ultimate_destruction' ? 0.3 : 0.2
+      const step = (Math.PI * 2) / 36
       const rings = boss.id === 'shadow_demon' || boss.id === 'ultimate_destruction' ? 2 : 1
-      const count = 12 + boss.phase * 2
-      const speed = 2 + boss.phase * 0.3
+      const speed = 1.8 + boss.phase * 0.2
       for (let r = 0; r < rings; r++) {
-        const offset = r * (Math.PI / count)
-        for (let i = 0; i < count; i++) {
-          const angle = boss.spinAngle + (Math.PI * 2 / count) * i + offset
-          bullets.push({
-            x: boss.x + boss.width / 2, y: boss.y + boss.height / 2,
-            vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed,
-            radius: 3, color: '#ff66ff', damage: 1, alive: true
-          })
-        }
+        const angle = boss.spinAngle + r * Math.PI
+        bullets.push({
+          x: boss.x + boss.width / 2, y: boss.y + boss.height / 2,
+          vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed,
+          radius: 3, color: '#ff66ff', damage: 1, alive: true
+        })
       }
-      const cooldown = boss.id === 'iron_beast' ? 800 : boss.id === 'thunder_dragon' ? 600 : boss.id === 'shadow_demon' ? 400 : 250
+      boss.spinAngle += step
+      const cooldown = boss.id === 'iron_beast' ? 120 : boss.id === 'thunder_dragon' ? 100 : boss.id === 'shadow_demon' ? 80 : 60
       boss.patternTimers.spin = now + cooldown
     }
   }
@@ -164,11 +178,14 @@ class Boss {
   getNextPattern(now, bullets, player) {
     if (now < this.patternSwitchTimer) return null
     const pattern = this.patterns[this.currentPatternIndex]
-    this.currentPatternIndex = (this.currentPatternIndex + 1) % this.patterns.length
     const timer = this.patternTimers[pattern]
-    if (timer && now < timer) return null
+    if (timer && now < timer) {
+      this.currentPatternIndex = (this.currentPatternIndex + 1) % this.patterns.length
+      return null
+    }
     const fn = BOSS_PATTERNS[pattern]
     if (fn) fn.execute(this, now, bullets, player, this.screenWidth)
+    this.currentPatternIndex = (this.currentPatternIndex + 1) % this.patterns.length
     this.patternSwitchTimer = now + Math.max(400, this.patternInterval - this.phase * 200)
   }
 

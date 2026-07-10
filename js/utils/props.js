@@ -7,7 +7,7 @@ const PROP_DEFINITIONS = {
   },
   shield: {
     name: '护盾', color: '#00ccff', glowColor: 'rgba(0,204,255,0.4)',
-    icon: 'S', duration: 8000, description: '抵挡一次伤害'
+    icon: 'S', duration: 5000, description: '5秒无敌'
   },
   bomb: {
     name: '全屏炸弹', color: '#ff2244', glowColor: 'rgba(255,34,68,0.4)',
@@ -24,6 +24,10 @@ const PROP_DEFINITIONS = {
   score_x2: {
     name: '分数加倍', color: '#ff44ff', glowColor: 'rgba(255,68,255,0.4)',
     icon: '2', duration: 10000, description: '得分翻倍'
+  },
+  ultima: {
+    name: '大招', color: '#ff8800', glowColor: 'rgba(255,136,0,0.4)',
+    icon: '🔥', duration: 0, description: '增加一次大招'
   }
 }
 
@@ -77,6 +81,8 @@ class Prop {
         player.scoreMultiplier = 2
         player.scoreTimer = PROP_DEFINITIONS.score_x2.duration
         break
+      case CONSTANTS.PROP_TYPES.ULTIMA:
+        return { type: 'ultima' }
     }
     return null
   }
