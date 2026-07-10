@@ -887,7 +887,7 @@ class Game {
   onLevelComplete(cb) { this.levelCompleteCallback = cb }
   onScoreUpdate(cb) { this.scoreUpdateCallback = cb }
   onStateChange(cb) { this.stateChangeCallback = cb }
-  onUltimaUpdate(cb) { this.ultimaUpdateCallback = cb }
+  onUltimaUpdate(cb) { this.ultimaUpdateCallback = cb; this.#updateUltimaBtn() }
   #updateUltimaBtn() { if (this.ultimaUpdateCallback) this.ultimaUpdateCallback(this.ultimaCount) }
 
   pause() {
