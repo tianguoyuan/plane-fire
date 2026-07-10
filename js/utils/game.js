@@ -1,11 +1,11 @@
 import CONSTANTS from './constants.js'
-import LEVELS from './levels.js'
+import LEVELS, { BOSS_RUSH } from './levels.js'
 import { Enemy, createEnemy } from './enemies.js'
 import { Boss } from './bosses.js'
 import { PROP_DEFINITIONS, Prop, createRandomProp } from './props.js'
 
 class Game {
-  constructor(canvas, screenWidth, screenHeight, level, savedState) {
+  constructor(canvas, screenWidth, screenHeight, level, savedState, bossRushStartIndex) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')
     this.screenWidth = screenWidth
@@ -17,13 +17,19 @@ class Game {
     this.ctx.scale(this.pixelRatio, this.pixelRatio)
 
     this.state = CONSTANTS.GAME_STATE.PLAYING
-    this.level = level
-    this.levelConfig = structuredClone(LEVELS[level - 1])
+    this.level = level || 1
+    if (level === 0) {
+      this.levelConfig = { ...BOSS_RUSH, enemySpawns: [] }
+      this._bossRushIndex = bossRushStartIndex || 0
+    } else {
+      this.levelConfig = { ...LEVELS[level - 1], enemySpawns: LEVELS[level - 1].enemySpawns.map(s => ({ ...s })) }
+      this._bossRushIndex = -1
+    }
 
     savedState = savedState || {}
     this.player = {
-      x: screenWidth / 2 - CONSTANTS.PLAYER.WIDTH / 2,
-      y: screenHeight - 100,
+      x: savedState.x != null ? Math.max(0, Math.min(screenWidth - CONSTANTS.PLAYER.WIDTH, savedState.x)) : screenWidth / 2 - CONSTANTS.PLAYER.WIDTH / 2,
+      y: savedState.y != null ? Math.max(0, Math.min(screenHeight - CONSTANTS.PLAYER.HEIGHT, savedState.y)) : screenHeight - 100,
       width: CONSTANTS.PLAYER.WIDTH,
       height: CONSTANTS.PLAYER.HEIGHT,
       speed: CONSTANTS.PLAYER.SPEED,
@@ -46,16 +52,20 @@ class Game {
     this.enemies = []
     this.props = []
     this.boss = null
+    this._particlePool = []
+    for (let i = 0; i < 300; i++) this._particlePool.push({})
     this.particles = []
     this.floatingTexts = []
 
     this.score = savedState.score || 0
     this.levelScore = 0
     this.totalKills = 0
+    this.totalResolved = 0
     this.bombUsed = false
     this.bombEffectTimer = 0
-    this._startTime = performance.now()
+    this._startTime = performance.now() + 5000
     this._lastFire = 0
+    this._bossRushPropTimer = 0
 
     this.stars = []
     for (let i = 0; i < 60; i++) {
@@ -63,7 +73,8 @@ class Game {
         x: Math.random() * screenWidth,
         y: Math.random() * screenHeight,
         size: Math.random() * 2 + 0.5,
-        speed: 0.5 + Math.random() * this.levelConfig.backgroundSpeed
+        speed: 0.5 + Math.random() * this.levelConfig.backgroundSpeed,
+        alpha: 0.3 + Math.random() * 0.7
       })
     }
     this.bgOffset = 0
@@ -74,6 +85,7 @@ class Game {
 
     this.lastTime = performance.now()
     this.gameTime = 0
+    this.levelStartTime = performance.now()
     this.totalEnemyCount = this.levelConfig.enemySpawns.reduce((s, sp) => s + sp.count, 0)
     this.spawnTimers = []
     this.spawnCompleted = []
@@ -85,6 +97,7 @@ class Game {
     this.stateChangeCallback = null
 
     this.running = true
+    this._boundLoop = this.#loop.bind(this)
     this.#loop()
   }
 
@@ -101,6 +114,8 @@ class Game {
 
   clearTouch() {
     this.isTouching = false
+    this.touchX = this.player.x + this.player.width / 2
+    this.touchY = this.player.y + this.player.height / 2
   }
 
   #loop() {
@@ -111,11 +126,13 @@ class Game {
     this.lastTime = now
     this.gameTime += dt
 
-    this.#update(dt, now)
-    this.#render()
+    if (this.state !== CONSTANTS.GAME_STATE.PAUSED) {
+      this.#update(dt, now)
+      this.#render()
+    }
 
     if (this.running) {
-      requestAnimationFrame(() => this.#loop())
+      requestAnimationFrame(this._boundLoop)
     }
   }
 
@@ -140,6 +157,14 @@ class Game {
     this.#updateBullets()
     this.#updateEnemies(dt, now)
     this.#updateBoss(dt, now)
+    if (this._bossRushIndex >= 0 && this.state === CONSTANTS.GAME_STATE.BOSS_FIGHT) {
+      this._bossRushPropTimer += dt
+      if (this._bossRushPropTimer > 4000) {
+        this._bossRushPropTimer = 0
+        const prop = createRandomProp(Math.random() * (this.screenWidth - 40) + 20, -20)
+        if (prop) this.props.push(prop)
+      }
+    }
     this.#updateProps(dt)
     this.#updateParticles(dt)
     this.#updateFloatingTexts(dt)
@@ -196,22 +221,30 @@ class Game {
       case 2: this.playerBullets.push(mk(px - 8, py, 0), mk(px + 8, py, 0)); break
       case 3: this.playerBullets.push(mk(px, py, 0), mk(px - 10, py, -0.3), mk(px + 10, py, 0.3)); break
       case 4: this.playerBullets.push(mk(px - 12, py, -0.5), mk(px - 4, py, -0.15), mk(px + 4, py, 0.15), mk(px + 12, py, 0.5)); break
+      case 5: this.playerBullets.push(mk(px, py, 0), mk(px - 10, py, -0.4), mk(px + 10, py, 0.4), mk(px - 18, py, -0.7), mk(px + 18, py, 0.7)); break
     }
   }
 
   #updateBullets() {
-    this.playerBullets = this.playerBullets.filter(b => {
+    for (let i = this.playerBullets.length - 1; i >= 0; i--) {
+      const b = this.playerBullets[i]
       b.x += b.vx; b.y += b.vy
-      return b.alive && b.y > -20 && b.x > -20 && b.x < this.screenWidth + 20
-    })
-    this.enemyBullets = this.enemyBullets.filter(b => {
+      if (!b.alive || b.y < -20 || b.x < -20 || b.x > this.screenWidth + 20) {
+        this.playerBullets.splice(i, 1)
+      }
+    }
+    for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
+      const b = this.enemyBullets[i]
       b.x += b.vx; b.y += b.vy
-      return b.alive && b.y < this.screenHeight + 30 && b.x > -30 && b.x < this.screenWidth + 30
-    })
+      if (!b.alive || b.y > this.screenHeight + 30 || b.x < -30 || b.x > this.screenWidth + 30) {
+        this.enemyBullets.splice(i, 1)
+      }
+    }
   }
 
   #updateEnemies(dt, now) {
-    this.enemies = this.enemies.filter(e => {
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i]
       e.update(dt, now)
       if (e.shouldFire(now)) {
         this.enemyBullets.push({
@@ -220,8 +253,11 @@ class Game {
           radius: 4, color: e.bulletColor || '#ff6666', damage: 1, alive: true
         })
       }
-      return e.alive && !e.isOffScreen(this.screenHeight)
-    })
+      if (!e.alive || e.isOffScreen(this.screenHeight)) {
+        this.enemies.splice(i, 1)
+        if (e.alive) this.totalResolved++
+      }
+    }
   }
 
   #updateBoss(dt, now) {
@@ -233,26 +269,34 @@ class Game {
   }
 
   #updateProps(dt) {
-    this.props = this.props.filter(p => {
+    for (let i = this.props.length - 1; i >= 0; i--) {
+      const p = this.props[i]
       p.update(dt)
-      return p.alive && !p.isOffScreen(this.screenHeight)
-    })
+      if (!p.alive || p.isOffScreen(this.screenHeight)) {
+        this.props.splice(i, 1)
+      }
+    }
   }
 
   #updateParticles(dt) {
-    this.particles = this.particles.filter(p => {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i]
       p.x += p.vx; p.y += p.vy
       p.life -= dt; p.size *= 0.97
-      return p.life > 0
-    })
+      if (p.life <= 0) {
+        this.particles.splice(i, 1)
+        if (this._particlePool.length < 300) this._particlePool.push(p)
+      }
+    }
   }
 
   #updateFloatingTexts(dt) {
-    this.floatingTexts = this.floatingTexts.filter(t => {
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const t = this.floatingTexts[i]
       t.y -= t.speed; t.life -= dt
       t.alpha = Math.max(0, t.life / t.maxLife)
-      return t.life > 0
-    })
+      if (t.life <= 0) this.floatingTexts.splice(i, 1)
+    }
   }
 
   #updateBackground(dt) {
@@ -280,14 +324,26 @@ class Game {
   }
 
   startBossFight() {
-    if (!this.levelConfig.boss || this.boss) return
-    this.state = CONSTANTS.GAME_STATE.BOSS_ALERT
-    setTimeout(() => {
-      if (!this.running) return
-      this.boss = new Boss(this.levelConfig.boss, this.screenWidth, this.screenHeight)
-      this.state = CONSTANTS.GAME_STATE.BOSS_FIGHT
-      if (this.stateChangeCallback) this.stateChangeCallback(this.state, this.boss)
-    }, 2000)
+    if (this._bossRushIndex >= 0) {
+      if (this._bossRushIndex >= this.levelConfig.bosses.length || this.boss) return
+      this.state = CONSTANTS.GAME_STATE.BOSS_ALERT
+      const config = this.levelConfig.bosses[this._bossRushIndex]
+      setTimeout(() => {
+        if (!this.running) return
+        this.boss = new Boss(config, this.screenWidth, this.screenHeight)
+        this.state = CONSTANTS.GAME_STATE.BOSS_FIGHT
+        if (this.stateChangeCallback) this.stateChangeCallback(this.state, this.boss)
+      }, 2000)
+    } else {
+      if (!this.levelConfig.boss || this.boss) return
+      this.state = CONSTANTS.GAME_STATE.BOSS_ALERT
+      setTimeout(() => {
+        if (!this.running) return
+        this.boss = new Boss(this.levelConfig.boss, this.screenWidth, this.screenHeight)
+        this.state = CONSTANTS.GAME_STATE.BOSS_FIGHT
+        if (this.stateChangeCallback) this.stateChangeCallback(this.state, this.boss)
+      }, 2000)
+    }
   }
 
   // ========== COLLISION ==========
@@ -370,7 +426,7 @@ class Game {
 
   #onEnemyKilled(enemy) {
     const points = enemy.score * this.player.scoreMultiplier
-    this.score += points; this.levelScore += points; this.totalKills++
+    this.score += points; this.levelScore += points; this.totalKills++; this.totalResolved++
     this.#spawnExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.color, 10)
     this.#addFloatingText(enemy.x + enemy.width / 2, enemy.y, `+${points}`, '#ffff00')
     const prop = createRandomProp(enemy.x + enemy.width / 2 - 12, enemy.y + enemy.height / 2 - 12)
@@ -383,6 +439,17 @@ class Game {
     this.#spawnExplosion(this.boss.x + this.boss.width / 2, this.boss.y + this.boss.height / 2, '#ffcc00', 50)
     this.#addFloatingText(this.boss.x + this.boss.width / 2, this.boss.y - 20, `BOSS击败! +${500 * this.level}`, '#ffcc00')
     if (this.scoreUpdateCallback) this.scoreUpdateCallback(this.score, this.player.lives)
+    if (this._bossRushIndex >= 0) {
+      this._bossRushIndex++
+      this.boss = null
+      if (this._bossRushIndex < this.levelConfig.bosses.length) {
+        setTimeout(() => {
+          if (!this.running) return
+          this.startBossFight()
+        }, 3000)
+        return
+      }
+    }
     setTimeout(() => {
       if (!this.running) return
       this.state = CONSTANTS.GAME_STATE.LEVEL_COMPLETE
@@ -392,8 +459,20 @@ class Game {
 
   #checkWinCondition(now) {
     if (this.state !== CONSTANTS.GAME_STATE.PLAYING) return
+    if (now < this._startTime) return
     const done = this.spawnCompleted.every(s => s)
-    if (done && this.enemies.length === 0 && !this.boss) this.startBossFight()
+    if (done && this.enemies.length === 0 && !this.boss) {
+      if (this.levelConfig.boss || this._bossRushIndex >= 0) {
+        this.startBossFight()
+      } else {
+        this.#completeLevel()
+      }
+    }
+  }
+
+  #completeLevel() {
+    this.state = CONSTANTS.GAME_STATE.LEVEL_COMPLETE
+    if (this.levelCompleteCallback) this.levelCompleteCallback(this.score, this.level)
   }
 
   #activateBomb() {
@@ -403,7 +482,10 @@ class Game {
   }
 
   #clearAllEnemies() {
-    this.enemies.forEach(e => this.#spawnExplosion(e.x + e.width / 2, e.y + e.height / 2, e.color, 8))
+    this.enemies.forEach(e => {
+      this.#spawnExplosion(e.x + e.width / 2, e.y + e.height / 2, e.color, 8)
+      this.totalResolved++
+    })
     this.enemies = []
     for (let i = 0; i < Math.min(this.enemyBullets.length, 30); i++) {
       this.#spawnHitParticles(this.enemyBullets[i].x, this.enemyBullets[i].y, '#ff4444')
@@ -414,17 +496,27 @@ class Game {
 
   #spawnExplosion(x, y, color, count = 15) {
     for (let i = 0; i < count; i++) {
+      const p = this._particlePool.pop() || {}
       const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5
       const speed = 1 + Math.random() * 3
-      this.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: 2 + Math.random() * 4, color, life: 400 + Math.random() * 300, maxLife: 700 })
+      p.x = x; p.y = y
+      p.vx = Math.cos(angle) * speed; p.vy = Math.sin(angle) * speed
+      p.size = 2 + Math.random() * 4; p.color = color
+      p.life = 400 + Math.random() * 300; p.maxLife = 700
+      this.particles.push(p)
     }
   }
 
   #spawnHitParticles(x, y, color) {
     for (let i = 0; i < 5; i++) {
+      const p = this._particlePool.pop() || {}
       const angle = Math.random() * Math.PI * 2
       const speed = 1 + Math.random() * 2
-      this.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: 1.5 + Math.random() * 2, color, life: 200 + Math.random() * 100, maxLife: 300 })
+      p.x = x; p.y = y
+      p.vx = Math.cos(angle) * speed; p.vy = Math.sin(angle) * speed
+      p.size = 1.5 + Math.random() * 2; p.color = color
+      p.life = 200 + Math.random() * 100; p.maxLife = 300
+      this.particles.push(p)
     }
   }
 
@@ -456,7 +548,7 @@ class Game {
     ctx.fillStyle = g
     ctx.fillRect(0, 0, W, H)
     this.stars.forEach(star => {
-      ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.7})`
+      ctx.fillStyle = `rgba(255,255,255,${star.alpha})`
       ctx.beginPath(); ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2); ctx.fill()
     })
     ctx.strokeStyle = 'rgba(0,150,255,0.05)'
@@ -481,7 +573,8 @@ class Game {
       ctx.strokeStyle = 'rgba(0,204,255,0.6)'; ctx.lineWidth = 2; ctx.stroke()
     }
     ctx.fillStyle = 'rgba(255,150,0,0.6)'
-    ctx.beginPath(); ctx.moveTo(cx - 6, p.y + p.height); ctx.lineTo(cx, p.y + p.height + 8 + Math.random() * 6); ctx.lineTo(cx + 6, p.y + p.height); ctx.fill()
+    const flameLen = 8 + 4 * Math.sin(performance.now() * 0.015)
+    ctx.beginPath(); ctx.moveTo(cx - 6, p.y + p.height); ctx.lineTo(cx, p.y + p.height + flameLen); ctx.lineTo(cx + 6, p.y + p.height); ctx.fill()
     ctx.fillStyle = '#4488ff'
     ctx.beginPath(); ctx.moveTo(cx, p.y); ctx.lineTo(cx + p.width / 2, p.y + p.height * 0.7); ctx.lineTo(cx + p.width / 3, p.y + p.height); ctx.lineTo(cx - p.width / 3, p.y + p.height); ctx.lineTo(cx - p.width / 2, p.y + p.height * 0.7); ctx.closePath(); ctx.fill()
     ctx.fillStyle = '#66aaff'
@@ -507,11 +600,24 @@ class Game {
 
   #renderEnemies(ctx) {
     this.enemies.forEach(e => {
-      if (!e.visible) return
+      const stealth = e.blinkInterval > 0 && !e.visible
       ctx.save()
       const cx = e.x + e.width / 2, cy = e.y + e.height / 2
-      ctx.fillStyle = e.color
-      ctx.beginPath(); ctx.moveTo(cx, e.y + e.height); ctx.lineTo(cx + e.width / 2, e.y); ctx.lineTo(cx - e.width / 2, e.y); ctx.closePath(); ctx.fill()
+      if (stealth) {
+        ctx.globalAlpha = 0.15
+        ctx.fillStyle = e.color
+        ctx.beginPath(); ctx.moveTo(cx, e.y + e.height); ctx.lineTo(cx + e.width / 2, e.y); ctx.lineTo(cx - e.width / 2, e.y); ctx.closePath(); ctx.fill()
+        ctx.globalAlpha = 0.5
+        ctx.strokeStyle = e.color
+        ctx.lineWidth = 1.5
+        ctx.shadowColor = e.color
+        ctx.shadowBlur = 8
+        ctx.beginPath(); ctx.moveTo(cx, e.y + e.height); ctx.lineTo(cx + e.width / 2, e.y); ctx.lineTo(cx - e.width / 2, e.y); ctx.closePath(); ctx.stroke()
+        ctx.shadowBlur = 0
+      } else {
+        ctx.fillStyle = e.color
+        ctx.beginPath(); ctx.moveTo(cx, e.y + e.height); ctx.lineTo(cx + e.width / 2, e.y); ctx.lineTo(cx - e.width / 2, e.y); ctx.closePath(); ctx.fill()
+      }
       if (e.maxHp > 1) {
         ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(e.x, e.y - 6, e.width, 4)
         ctx.fillStyle = '#44ff44'; ctx.fillRect(e.x, e.y - 6, e.width * (e.hp / e.maxHp), 4)
@@ -525,7 +631,7 @@ class Game {
     const b = this.boss
     ctx.save()
     const cx = b.x + b.width / 2, cy = b.y + b.height / 2
-    if (b.flashTimer < 100) ctx.globalAlpha = 0.7 + Math.random() * 0.3
+    if (b.flashTimer < 100) ctx.globalAlpha = 0.7 + 0.3 * Math.sin(performance.now() * 0.02)
     ctx.fillStyle = '#8844ff'
     ctx.beginPath()
     ctx.moveTo(cx, b.y)
@@ -605,10 +711,18 @@ class Game {
     ctx.save()
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, 44)
     ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    const levelLabel = this.boss ? `第${this.level}关 · ${this.boss.name}` : `第${this.level}关`
+    const levelLabel = this._bossRushIndex >= 0
+      ? (this.boss ? `BOSS 连战 ${this._bossRushIndex + 1}/${this.levelConfig.bosses.length}` : 'BOSS 连战')
+      : `第${this.level}关`
     ctx.fillText(levelLabel, 12, 22)
-    ctx.textAlign = 'right'; ctx.fillStyle = '#ffd700'
-    ctx.fillText(`分数: ${this.score}`, W - 12, 22)
+    let textX = 12 + ctx.measureText(levelLabel).width + 16
+    ctx.fillStyle = '#ffd700'
+    ctx.fillText(`分数: ${this.score}`, textX, 22)
+    textX += ctx.measureText(`分数: ${this.score}`).width + 16
+    if (this.boss) {
+      ctx.fillStyle = this._bossRushIndex >= 0 ? '#ff6666' : '#aa66ff'
+      ctx.fillText(this.boss.name, textX, 22)
+    }
     if (this.player.alive) {
       for (let i = 0; i < this.player.lives; i++) {
         ctx.fillStyle = '#ff4444'
@@ -622,7 +736,7 @@ class Game {
     if (this.player.speedBoost) { ctx.fillStyle = '#ffff00'; ctx.fillText(`⚡ ${Math.ceil(this.player.speedTimer / 1000)}s`, bx, 74); bx += 60 }
     if (this.player.scoreMultiplier > 1) { ctx.fillStyle = '#ff44ff'; ctx.fillText(`✖️${this.player.scoreMultiplier} ${Math.ceil(this.player.scoreTimer / 1000)}s`, bx, 74) }
     // 进度条: 仅敌机击杀进度，与Boss无关
-    const progress = this.totalEnemyCount > 0 ? Math.min(this.totalKills / this.totalEnemyCount, 1) : 0
+    const progress = this.totalEnemyCount > 0 ? Math.min(this.totalResolved / this.totalEnemyCount, 1) : 0
     ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(12, 84, W - 24, 6)
     ctx.fillStyle = '#00ff88'
     ctx.fillRect(12, 84, (W - 24) * progress, 6)
@@ -641,6 +755,16 @@ class Game {
       ctx.fillText('🎉 通关!', W / 2, H / 2 - 30)
       ctx.fillStyle = '#fff'; ctx.font = '26px sans-serif'
       ctx.fillText(`得分: ${this.score}`, W / 2, H / 2 + 30)
+    }
+    if (this._bossRushIndex < 0) {
+      const levelToastElapsed = performance.now() - this.levelStartTime
+      if (levelToastElapsed < 3000) {
+        ctx.save()
+        ctx.globalAlpha = levelToastElapsed < 300 ? 1 : Math.max(0, 1 - (levelToastElapsed - 300) / 2700)
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 28px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(`第${this.level}关`, W / 2, H / 2)
+        ctx.restore()
+      }
     }
     ctx.restore()
   }

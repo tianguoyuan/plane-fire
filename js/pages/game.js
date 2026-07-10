@@ -3,17 +3,24 @@ import Game from '../utils/game.js'
 import CONSTANTS from '../utils/constants.js'
 import LEVELS from '../utils/levels.js'
 
+const BOSS_RUSH_LEVEL = 0
+
+const PAUSE_STATES = new Set([CONSTANTS.GAME_STATE.PLAYING, CONSTANTS.GAME_STATE.BOSS_FIGHT])
+
 let game = null
 let currentLevel = 1
 let savedState = { weaponLevel: 1, lives: 3, score: 0 }
+let bossRushStartIndex = 0
 
-export function init(level) {
+export function init(level, options = {}) {
   currentLevel = level
+  bossRushStartIndex = level === BOSS_RUSH_LEVEL ? (options.bossStartIndex || 0) : 0
   savedState = { weaponLevel: 1, lives: 3, score: 0 }
   const page = document.getElementById('page-game')
 
   page.innerHTML = `
     <canvas id="gameCanvas"></canvas>
+    <button class="pause-btn" id="pauseBtn">⏸</button>
     <div class="overlay" id="gameOverlay">
       <div class="overlay-bg"></div>
       <div class="overlay-panel game-overlay-panel">
@@ -22,6 +29,16 @@ export function init(level) {
         <div class="overlay-btns">
           <button class="btn btn-primary" id="overlayBtn">重新挑战</button>
           <button class="btn btn-secondary" id="overlayHome" style="display:none">返回首页</button>
+        </div>
+      </div>
+    </div>
+    <div class="overlay" id="pauseOverlay">
+      <div class="overlay-bg" id="pauseMask"></div>
+      <div class="overlay-panel game-overlay-panel">
+        <h2 class="overlay-title">⏸ 暂停</h2>
+        <div class="overlay-btns">
+          <button class="btn btn-primary" id="resumeBtn">返回游戏</button>
+          <button class="btn btn-secondary" id="homeFromPauseBtn">返回主菜单</button>
         </div>
       </div>
     </div>
@@ -51,6 +68,14 @@ export function init(level) {
     }
   })
 
+  document.getElementById('pauseBtn').addEventListener('click', onPauseToggle)
+  document.getElementById('pauseMask').addEventListener('click', onResume)
+  document.getElementById('resumeBtn').addEventListener('click', onResume)
+  document.getElementById('homeFromPauseBtn').addEventListener('click', () => {
+    document.getElementById('pauseOverlay').classList.remove('active')
+    goHome()
+  })
+
   startGame(canvas, w, h)
 
   // 触摸事件
@@ -66,12 +91,25 @@ export function init(level) {
   canvas.addEventListener('mouseleave', onMouseUp)
 }
 
+function onPauseToggle() {
+  if (!game || !PAUSE_STATES.has(game.state)) return
+  game.pause()
+  document.getElementById('pauseOverlay').classList.add('active')
+}
+
+function onResume() {
+  if (!game) return
+  document.getElementById('pauseOverlay').classList.remove('active')
+  game.resume()
+}
+
 function startGame(canvas, w, h, state) {
   document.getElementById('gameOverlay').classList.remove('active')
+  document.getElementById('pauseOverlay').classList.remove('active')
 
   if (game) { game.destroy(); game = null }
 
-  game = new Game(canvas, w, h, currentLevel, state || savedState)
+  game = new Game(canvas, w, h, currentLevel, state || savedState, bossRushStartIndex)
 
   game.onScoreUpdate(() => {})
   game.onStateChange((state, boss) => {
@@ -82,18 +120,27 @@ function startGame(canvas, w, h, state) {
   game.onGameOver((score) => {
     const isNew = score > app.data.highScore
     if (isNew) { app.data.highScore = score; app.save() }
-    showOverlay(isNew ? '🏆 新纪录!' : '💀 游戏结束', `得分: ${score} | 到达: 第${currentLevel}关`, '重新挑战', false)
+    const levelInfo = currentLevel === BOSS_RUSH_LEVEL ? 'BOSS 连战' : `第${currentLevel}关 - ${LEVELS[currentLevel - 1]?.name || ''}`
+    showOverlay(isNew ? '🏆 新纪录!' : '💀 游戏结束', `得分: ${score} | 到达: ${levelInfo}`, '重新挑战', false)
   })
   game.onLevelComplete((score) => {
     const next = currentLevel + 1
-    if (next > app.data.unlockedLevel) {
+    if (currentLevel !== BOSS_RUSH_LEVEL && next > app.data.unlockedLevel) {
       app.data.unlockedLevel = Math.min(next, LEVELS.length)
       app.save()
     }
     const isNew = score > app.data.highScore
     if (isNew) { app.data.highScore = score; app.save() }
-    const btnText = next <= LEVELS.length ? '下一关' : '返回首页'
-    showOverlay('🎉 关卡通过!', `得分: ${score}`, btnText, true)
+    savedState = {
+      x: game.player.x,
+      y: game.player.y,
+      weaponLevel: game.player.weaponLevel,
+      lives: game.player.lives,
+      score: game.score
+    }
+    const btnText = currentLevel === BOSS_RUSH_LEVEL || next > LEVELS.length ? '返回首页' : '下一关'
+    const title = currentLevel === BOSS_RUSH_LEVEL ? '🏆 BOSS 连战通关!' : '🎉 关卡通过!'
+    showOverlay(title, `得分: ${score}`, btnText, true)
   })
 }
 
@@ -111,6 +158,8 @@ function showOverlay(title, score, btnText, levelComplete) {
       currentLevel = Math.min(currentLevel + 1, LEVELS.length)
       if (game) {
         savedState = {
+          x: game.player.x,
+          y: game.player.y,
           weaponLevel: game.player.weaponLevel,
           lives: game.player.lives,
           score: game.score

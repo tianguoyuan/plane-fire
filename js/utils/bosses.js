@@ -2,7 +2,7 @@ const BOSS_PATTERNS = {
   spread: {
     name: '散弹',
     execute(boss, now, bullets) {
-      const count = 5 + boss.phase * 2
+      const count = 7 + boss.phase * 3
       const angleStep = Math.PI / (count + 1)
       const startAngle = -Math.PI / 3 + angleStep / 2
       const speed = 2.5 + boss.phase * 0.5
@@ -14,7 +14,7 @@ const BOSS_PATTERNS = {
           radius: 4, color: '#ff3366', damage: 1, alive: true
         })
       }
-      boss.patternTimers.spread = now + (1500 - boss.phase * 100)
+      boss.patternTimers.spread = now + (1000 - boss.phase * 100)
     }
   },
   aimed: {
@@ -30,13 +30,13 @@ const BOSS_PATTERNS = {
         vx: (dx / dist) * speed, vy: (dy / dist) * speed,
         radius: 5, color: '#ff00ff', damage: 1, alive: true
       })
-      boss.patternTimers.aimed = now + (2000 - boss.phase * 150)
+      boss.patternTimers.aimed = now + (1200 - boss.phase * 150)
     }
   },
   circle: {
     name: '环形弹',
     execute(boss, now, bullets) {
-      const count = 12 + boss.phase * 4
+      const count = 16 + boss.phase * 4
       const angleStep = (Math.PI * 2) / count
       const speed = 2 + boss.phase * 0.3
       for (let i = 0; i < count; i++) {
@@ -47,28 +47,28 @@ const BOSS_PATTERNS = {
           radius: 4, color: '#ffaa00', damage: 1, alive: true
         })
       }
-      boss.patternTimers.circle = now + (2500 - boss.phase * 200)
+      boss.patternTimers.circle = now + (1500 - boss.phase * 150)
     }
   },
   laser: {
     name: '激光',
     execute(boss, now, bullets) {
-      const count = 3 + boss.phase
+      const count = 5 + boss.phase
       for (let i = 0; i < count; i++) {
-        const offsetX = (i - (count - 1) / 2) * 30
+        const offsetX = (i - (count - 1) / 2) * 25
         bullets.push({
           x: boss.x + boss.width / 2 + offsetX, y: boss.y + boss.height,
           vx: 0, vy: 6 + boss.phase, radius: 3, color: '#00ffff',
           damage: 1, alive: true, isLaser: true
         })
       }
-      boss.patternTimers.laser = now + (1800 - boss.phase * 100)
+      boss.patternTimers.laser = now + (1200 - boss.phase * 100)
     }
   },
   meteor: {
     name: '流星',
     execute(boss, now, bullets, player, screenWidth) {
-      const count = 3 + boss.phase * 2
+      const count = 5 + boss.phase * 2
       for (let i = 0; i < count; i++) {
         const x = Math.random() * (screenWidth - 20) + 10
         bullets.push({
@@ -77,7 +77,30 @@ const BOSS_PATTERNS = {
           color: '#ff4400', damage: 2, alive: true, isMeteor: true
         })
       }
-      boss.patternTimers.meteor = now + (3000 - boss.phase * 200)
+      boss.patternTimers.meteor = now + (2000 - boss.phase * 200)
+    }
+  },
+  spin: {
+    name: '旋弹',
+    execute(boss, now, bullets) {
+      if (!boss.spinAngle) boss.spinAngle = 0
+      boss.spinAngle += boss.id === 'shadow_demon' || boss.id === 'ultimate_destruction' ? 0.3 : 0.2
+      const rings = boss.id === 'shadow_demon' || boss.id === 'ultimate_destruction' ? 2 : 1
+      const count = 12 + boss.phase * 2
+      const speed = 2 + boss.phase * 0.3
+      for (let r = 0; r < rings; r++) {
+        const offset = r * (Math.PI / count)
+        for (let i = 0; i < count; i++) {
+          const angle = boss.spinAngle + (Math.PI * 2 / count) * i + offset
+          bullets.push({
+            x: boss.x + boss.width / 2, y: boss.y + boss.height / 2,
+            vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed,
+            radius: 3, color: '#ff66ff', damage: 1, alive: true
+          })
+        }
+      }
+      const cooldown = boss.id === 'iron_beast' ? 800 : boss.id === 'thunder_dragon' ? 600 : boss.id === 'shadow_demon' ? 400 : 250
+      boss.patternTimers.spin = now + cooldown
     }
   }
 }
@@ -103,7 +126,7 @@ class Boss {
     this.patternTimers = {}
     this.currentPatternIndex = 0
     this.patternSwitchTimer = 0
-    this.patternInterval = 3000
+    this.patternInterval = 1000
     this.moveTimer = 0
     this.moveDir = 1
     this.defeated = false
@@ -146,7 +169,7 @@ class Boss {
     if (timer && now < timer) return null
     const fn = BOSS_PATTERNS[pattern]
     if (fn) fn.execute(this, now, bullets, player, this.screenWidth)
-    this.patternSwitchTimer = now + this.patternInterval
+    this.patternSwitchTimer = now + Math.max(400, this.patternInterval - this.phase * 200)
   }
 
   takeDamage(dmg = 1) {
