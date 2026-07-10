@@ -115,7 +115,6 @@ function startGame(canvas, w, h, state) {
 
   game = new Game(canvas, w, h, currentLevel, state || savedState, bossRushStartIndex)
 
-  game.onScoreUpdate(() => {})
   game.onStateChange((state, boss) => {
     if (state === CONSTANTS.GAME_STATE.BOSS_FIGHT) {
       try { navigator.vibrate?.(100) } catch (e) { /* ignore */ }

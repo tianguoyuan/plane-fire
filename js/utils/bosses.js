@@ -143,7 +143,6 @@ class Boss {
     this.patternInterval = 1000
     this.moveTimer = 0
     this.moveDir = 1
-    this.defeated = false
     this.flashTimer = 0
     this.bars = config.bars || 1
     this.barHp = this.maxHp / this.bars
@@ -193,7 +192,7 @@ class Boss {
     this.hp -= dmg
     this.flashTimer = 0
     if (this.hp <= 0) {
-      this.hp = 0; this.alive = false; this.defeated = true
+      this.hp = 0; this.alive = false
       return true
     }
     return false

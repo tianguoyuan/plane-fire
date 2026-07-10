@@ -81,7 +81,6 @@ function buildLevelList() {
     const locked = i + 1 > app.data.unlockedLevel
     const div = document.createElement('div')
     div.className = `level-item ${locked ? 'locked' : 'unlocked'} ${i + 1 === selectedLevel ? 'selected' : ''}`
-    div.dataset.level = i + 1
     div.innerHTML = `
       <span class="level-num">${i + 1}</span>
       <span class="level-name">${LEVEL_NAMES[i]}</span>
