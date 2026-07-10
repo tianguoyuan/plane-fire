@@ -2,7 +2,7 @@ import CONSTANTS from './constants.js'
 import LEVELS, { BOSS_RUSH } from './levels.js'
 import { Enemy, createEnemy } from './enemies.js'
 import { Boss, BOSS_PATTERNS } from './bosses.js'
-import { createRandomProp } from './props.js'
+import { createRandomProp, PROP_DEFINITIONS } from './props.js'
 
 class Game {
   constructor(canvas, screenWidth, screenHeight, level, savedState, bossRushStartIndex) {
